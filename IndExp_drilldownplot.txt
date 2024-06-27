@@ -1,0 +1,105 @@
+import dash
+import dash_core_components as dcc
+import dash_bootstrap_components as dbc
+from dash.dependencies import Input, Output
+import plotly.express as px
+import pandas as pd
+
+url = 'https://docs.google.com/spreadsheets/d/1HPP3BYTgHkyx-7HU6UxQm-7UPAkQpB9J/export?format=xlsx'
+df = pd.read_excel(url)
+
+df.fillna(method='ffill', inplace=True)
+df.columns
+df.rename(columns={'Company ': 'Org'}, inplace=True)
+
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+def ind_pie():
+    fig = px.pie(df, names='Industry', height=600, width=600, hole=0.7,
+                 color_discrete_sequence=['#4c78a8', '#72b7b2', '#6b92bc'])
+    fig.update_traces(hovertemplate=None, textposition='outside',
+     textinfo='percent+label', rotation=50)
+    fig.update_layout(margin=dict(t=50, b=35, l=0, r=0), showlegend=False,
+                            plot_bgcolor='#fafafa', paper_bgcolor='#fafafa',
+                            font=dict(size=17, color='#8a8d93'),
+                            hoverlabel=dict(bgcolor="#444", font_size=13, font_family="Lato, sans-serif"))
+    fig.add_annotation(dict(x=0.5, y=0.5,  align='center',
+                            xref = "paper", yref = "paper",
+                            showarrow = False, font_size=22,
+                        text="Industry Exposure"))
+
+    #fig = px.pie(df, names='Industry',
+    #             values='Duration', hole=0.7)
+    #fig.update_layout(template='presentation', title='Sales distribution per Vendor')
+    return fig
+
+# creating app layout
+app.layout = dbc.Container([
+    dbc.Card([
+            dbc.Button('🡠', id='back-button', outline=True, size="sm",
+                        className='mt-2 ml-2 col-1', style={'display': 'none'}),
+            dbc.Row(
+                dcc.Graph(
+                        id='graph',
+                        figure=ind_pie()
+                    ), justify='center'
+            )
+    ], className='mt-3')
+])
+
+#Callback
+@app.callback(
+    Output('graph', 'figure'),
+    Output('back-button', 'style'), #to hide/unhide the back button
+    Input('graph', 'clickData'),    #for getting the vendor name from graph
+    Input('back-button', 'n_clicks')
+)
+def drilldown(click_data,n_clicks):
+
+    # using callback context to check which input was fired
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+
+    if trigger_id == 'graph':
+
+        # get Industry name from clickData
+        if click_data is not None:
+            ind = click_data['points'][0]['label']
+
+            if ind in df.Industry.unique():
+                # creating df for clicked vendor
+                acc_detail_df = df[df['Industry'] == ind]
+
+                #fig = px.bar(acc_detail_df, x='Accounts',
+                #             y='Duration', color='Accounts',
+                #             custom_data=['Company ','Type'])
+                #fig.update_layout(title='<b>{} Details<b>'.format(ind),
+                #                  showlegend=False, template='presentation',
+                #                  hovertemplate="<br>".join([
+                                            #     # "Company: %{customdata[0]}",
+                                            #     # "Type: %{customdata[1]}"
+
+                                            # ]))
+                fig = px.bar(acc_detail_df, x = 'Accounts', y='Duration',
+                             color='Accounts', custom_data=['Org', 'Type'])
+                fig.update_layout(title='<b>{} Drill Down Details<b>'.format(ind),
+                                  showlegend=False, template='presentation',
+                                  xaxis=dict(title=''),
+                                  yaxis=dict(title='Duration in months'))
+                fig.update_traces(
+                    hovertemplate="<br>".join([
+                        "Company: %{customdata[0]}",
+                        "Type: %{customdata[1]}",
+                    ]))
+                return fig, {'display':'block'}     #returning the fig and unhiding the back button
+
+
+
+
+            else:
+                return ind_pie(), {'display': 'none'}     #hiding the back button
+
+    else:
+        return ind_pie(), {'display':'none'}
+
+if __name__ == '__main__':
+    app.run_server(debug=True)
